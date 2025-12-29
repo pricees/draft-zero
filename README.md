@@ -2,7 +2,7 @@
 
 A distraction-free "write forward only" text editor. Forces you to keep writing without self-editing.
 
-![Draft Zero Screenshot](screenshots/app-main.png)
+![Draft Zero Screenshot](screenshots/app-main.jpg)
 
 ## What It Is
 
