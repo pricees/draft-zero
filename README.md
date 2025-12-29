@@ -42,8 +42,6 @@ Draft Zero is a minimalist writing app inspired by tools like "Write or Die." It
 ![Corrections mode](screenshots/corrections-enabled.png)
 *Check "Allow corrections" when you need to fix a typo*
 
-> **Note:** To add screenshots, run the app and use your system's screenshot tool to capture the window, then save to the `screenshots/` folder.
-
 ## Use Cases
 
 ### Morning Pages / Freewriting
