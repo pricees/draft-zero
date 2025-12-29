@@ -32,7 +32,7 @@ Draft Zero is a minimalist writing app inspired by tools like "Write or Die." It
 | Word count | Live word count in status bar |
 | Save indicator | Shows "Saved Xs ago" so you never lose work |
 
-## Screenshots
+## Draft Zero Screen Shots
 
 ### Writing Mode (Forward-Only)
 ![Forward-only mode](screenshots/forward-only.png)
