@@ -6,6 +6,10 @@ import "./Editor.css";
 const SAVE_INTERVAL_MS = 10000;
 const SAVE_KEYSTROKE_THRESHOLD = 5;
 const LOCAL_STORAGE_KEY = "draftZeroFilePath";
+const DEFAULT_WORK_MINUTES = 25;
+const DEFAULT_WORK_SECONDS = 0;
+const DEFAULT_BREAK_MINUTES = 5;
+const DEFAULT_BREAK_SECONDS = 0;
 
 function Editor() {
   const [text, setText] = useState("");
@@ -15,10 +19,20 @@ function Editor() {
   const [saveStatus, setSaveStatus] = useState("");
   const [isInitialized, setIsInitialized] = useState(false);
 
+  // Timer state
+  const [timerMinutes, setTimerMinutes] = useState(DEFAULT_WORK_MINUTES);
+  const [timerSeconds, setTimerSeconds] = useState(DEFAULT_WORK_SECONDS);
+  const [timerRunning, setTimerRunning] = useState(false);
+  const [timerPhase, setTimerPhase] = useState("work"); // "work" or "break"
+  const [timerFlash, setTimerFlash] = useState(null); // null, "work", or "break"
+  const [workDuration, setWorkDuration] = useState({ minutes: DEFAULT_WORK_MINUTES, seconds: DEFAULT_WORK_SECONDS });
+
   const textareaRef = useRef(null);
   const keystrokeCountRef = useRef(0);
   const saveTimerRef = useRef(null);
   const textRef = useRef(text);
+  const timerIntervalRef = useRef(null);
+  const audioContextRef = useRef(null);
 
   // Keep textRef in sync with text state
   useEffect(() => {
@@ -201,6 +215,115 @@ function Editor() {
     return parts[parts.length - 1];
   };
 
+  // Play chime sound using Web Audio API
+  const playChime = useCallback((isWorkEnd) => {
+    if (!audioContextRef.current) {
+      audioContextRef.current = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    const ctx = audioContextRef.current;
+    const oscillator = ctx.createOscillator();
+    const gainNode = ctx.createGain();
+
+    oscillator.connect(gainNode);
+    gainNode.connect(ctx.destination);
+
+    // Different frequencies for work vs break end
+    oscillator.frequency.value = isWorkEnd ? 523.25 : 659.25; // C5 for work end, E5 for break end
+    oscillator.type = "sine";
+
+    gainNode.gain.setValueAtTime(0.3, ctx.currentTime);
+    gainNode.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.5);
+
+    oscillator.start(ctx.currentTime);
+    oscillator.stop(ctx.currentTime + 0.5);
+  }, []);
+
+  // Handle timer reaching zero
+  const handleTimerEnd = useCallback(() => {
+    const isWorkEnd = timerPhase === "work";
+
+    // Play chime
+    playChime(isWorkEnd);
+
+    // Trigger flash animation
+    setTimerFlash(timerPhase);
+    setTimeout(() => setTimerFlash(null), 1000);
+
+    // Switch phase and set new duration
+    if (isWorkEnd) {
+      setTimerPhase("break");
+      setTimerMinutes(DEFAULT_BREAK_MINUTES);
+      setTimerSeconds(DEFAULT_BREAK_SECONDS);
+    } else {
+      setTimerPhase("work");
+      setTimerMinutes(workDuration.minutes);
+      setTimerSeconds(workDuration.seconds);
+    }
+  }, [timerPhase, playChime, workDuration]);
+
+  // Timer tick effect
+  useEffect(() => {
+    if (timerRunning) {
+      timerIntervalRef.current = setInterval(() => {
+        setTimerSeconds(prevSeconds => {
+          if (prevSeconds > 0) {
+            return prevSeconds - 1;
+          } else {
+            setTimerMinutes(prevMinutes => {
+              if (prevMinutes > 0) {
+                return prevMinutes - 1;
+              }
+              return prevMinutes;
+            });
+            return prevSeconds > 0 ? prevSeconds - 1 : 59;
+          }
+        });
+      }, 1000);
+    }
+
+    return () => {
+      if (timerIntervalRef.current) {
+        clearInterval(timerIntervalRef.current);
+      }
+    };
+  }, [timerRunning]);
+
+  // Check for timer reaching zero
+  useEffect(() => {
+    if (timerRunning && timerMinutes === 0 && timerSeconds === 0) {
+      handleTimerEnd();
+    }
+  }, [timerRunning, timerMinutes, timerSeconds, handleTimerEnd]);
+
+  // Timer controls
+  const toggleTimer = () => {
+    if (!timerRunning && timerPhase === "work") {
+      // Save work duration when starting
+      setWorkDuration({ minutes: timerMinutes, seconds: timerSeconds });
+    }
+    setTimerRunning(!timerRunning);
+  };
+
+  const resetTimer = () => {
+    setTimerRunning(false);
+    setTimerPhase("work");
+    setTimerMinutes(workDuration.minutes);
+    setTimerSeconds(workDuration.seconds);
+  };
+
+  // Handle timer input changes
+  const handleMinutesChange = (e) => {
+    const val = e.target.value.replace(/\D/g, "").slice(0, 2);
+    const num = Math.min(99, parseInt(val) || 0);
+    setTimerMinutes(num);
+  };
+
+  const handleSecondsChange = (e) => {
+    const val = e.target.value.replace(/\D/g, "").slice(0, 2);
+    const num = Math.min(59, parseInt(val) || 0);
+    setTimerSeconds(num);
+  };
+
   if (!isInitialized) {
     return <div className="loading">Setting up...</div>;
   }
@@ -227,14 +350,54 @@ function Editor() {
         autoFocus
       />
       <div className="status-bar">
-        <label className="corrections-toggle">
-          <input
-            type="checkbox"
-            checked={allowCorrections}
-            onChange={(e) => setAllowCorrections(e.target.checked)}
-          />
-          Allow corrections
-        </label>
+        <div className="status-left">
+          <label className="corrections-toggle">
+            <input
+              type="checkbox"
+              checked={allowCorrections}
+              onChange={(e) => setAllowCorrections(e.target.checked)}
+            />
+            Allow corrections
+          </label>
+          <div className={`timer-container ${timerFlash ? `flash-${timerFlash}` : ""}`}>
+            <input
+              type="text"
+              className="timer-input"
+              value={String(timerMinutes).padStart(2, "0")}
+              onChange={handleMinutesChange}
+              disabled={timerRunning}
+              placeholder="MM"
+              maxLength={2}
+            />
+            <span className="timer-colon">:</span>
+            <input
+              type="text"
+              className="timer-input"
+              value={String(timerSeconds).padStart(2, "0")}
+              onChange={handleSecondsChange}
+              disabled={timerRunning}
+              placeholder="SS"
+              maxLength={2}
+            />
+            <button
+              className="timer-btn"
+              onClick={toggleTimer}
+              title={timerRunning ? "Pause" : "Start"}
+            >
+              {timerRunning ? "⏸" : "▶"}
+            </button>
+            <button
+              className="timer-btn"
+              onClick={resetTimer}
+              title="Reset"
+            >
+              ↺
+            </button>
+            <span className={`timer-phase ${timerPhase}`}>
+              {timerPhase.toUpperCase()}
+            </span>
+          </div>
+        </div>
         <div className="status-right">
           <span className="filename">{getFilename()}</span>
           <span className="word-count">{wordCount} words</span>
